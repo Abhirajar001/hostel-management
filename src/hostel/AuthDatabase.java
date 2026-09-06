@@ -64,7 +64,12 @@ public class AuthDatabase {
     }
 
     private void ensureSuccess(HttpResponse<String> response) {
-        if (response.statusCode() < 200 || response.statusCode() >= 300) throw new IllegalArgumentException(value(response.body(), "msg", "message", "error_description", "error"));
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String message = value(response.body(), "msg", "message", "error_description", "error");
+            if (message.toLowerCase().contains("email not confirmed")) throw new IllegalArgumentException("Email not confirmed. Open the Supabase verification email, then try again.");
+            if (message.toLowerCase().contains("invalid login credentials")) throw new IllegalArgumentException("Invalid email or password. Create the account here first, then check your email confirmation.");
+            throw new IllegalArgumentException(message);
+        }
     }
 
     private String value(String body, String... keys) {

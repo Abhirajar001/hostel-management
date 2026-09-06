@@ -26,7 +26,7 @@ public class LoginWindow extends JFrame {
         resizeAuthWindow(420, 540);
         JPanel panel = form("Create your account", "Use your hostel email and a secure password."); JTextField name = new JTextField(); JTextField email = new JTextField(); JTextField google = new JTextField(); JPasswordField password = new JPasswordField(); JPasswordField confirmation = new JPasswordField(); JButton create = primary("Create account"); JButton back = new JButton("Back to sign in");
         panel.add(field("Full name", name)); panel.add(field("Email address", email)); panel.add(field("Google ID or email (optional)", google)); panel.add(passwordField("Password", password)); panel.add(passwordField("Confirm password", confirmation)); panel.add(create); panel.add(back);
-        create.addActionListener(event -> run(() -> { database.register(name.getText(), email.getText(), new String(password.getPassword()), new String(confirmation.getPassword()), google.getText()); JOptionPane.showMessageDialog(this, "Account created. You can now sign in."); showLogin(); })); back.addActionListener(event -> showLogin()); setContentPane(panel); revalidate(); repaint();
+        create.addActionListener(event -> run(() -> { database.register(name.getText(), email.getText(), new String(password.getPassword()), new String(confirmation.getPassword()), google.getText()); JOptionPane.showMessageDialog(this, "Account created. Check your email and click the Supabase verification link before signing in."); showLogin(); })); back.addActionListener(event -> showLogin()); setContentPane(panel); revalidate(); repaint();
     }
 
     private void showReset() {
