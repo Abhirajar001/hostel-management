@@ -2,3 +2,4 @@ out/
 hostel-data.ser
 users.db
 supabase.properties
+database/.env

@@ -1,64 +1,80 @@
 package hostel;
 
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
-import java.io.*;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
-import java.security.NoSuchAlgorithmException;
-import java.util.HashMap;
-import java.util.Map;
-import java.security.spec.InvalidKeySpecException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Properties;
 
-public class AuthDatabase implements Serializable {
-    private static final long serialVersionUID = 1L;
-    private static final String DATABASE_FILE = "users.db";
-    private static final int ITERATIONS = 120_000;
-    private static final int KEY_LENGTH = 256;
-    private final Map<String, UserAccount> accounts = new HashMap<>();
-    private transient SecureRandom random = new SecureRandom();
+public class AuthDatabase {
+    private final String projectUrl;
+    private final String publishableKey;
+    private final HttpClient client = HttpClient.newHttpClient();
 
-    public AuthDatabase() { load(); }
+    public AuthDatabase() {
+        Properties properties = new Properties();
+        try (InputStream input = Files.newInputStream(Path.of("supabase.properties"))) {
+            properties.load(input);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Create supabase.properties with your Supabase URL and publishable key.");
+        }
+        projectUrl = properties.getProperty("supabase.url", "").replaceAll("/rest/v1/?$", "");
+        publishableKey = properties.getProperty("supabase.publishableKey", "");
+        if (projectUrl.isBlank() || publishableKey.isBlank()) throw new IllegalStateException("Supabase configuration is incomplete.");
+    }
 
     public UserAccount register(String name, String email, String password, String confirmation, String googleId) {
-        String normalizedEmail = normalize(email);
-        if (name.isBlank() || normalizedEmail.isBlank() || password.length() < 8) throw new IllegalArgumentException("Enter a name, email, and password of at least 8 characters.");
-        if (!password.equals(confirmation)) throw new IllegalArgumentException("Passwords do not match.");
-        if (accounts.containsKey(normalizedEmail)) throw new IllegalArgumentException("An account with this email already exists.");
-        byte[] salt = new byte[16]; random().nextBytes(salt);
-        UserAccount account = new UserAccount(normalizedEmail, name.trim(), googleId.trim(), salt, hash(password.toCharArray(), salt));
-        accounts.put(normalizedEmail, account); save(); return account;
+        validatePassword(password, confirmation);
+        if (name.isBlank() || !email.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) throw new IllegalArgumentException("Enter a valid name and email address.");
+        String body = "{\"email\":" + json(email.trim().toLowerCase()) + ",\"password\":" + json(password) + ",\"data\":{" +
+                "\"full_name\":" + json(name.trim()) + ",\"google_id\":" + json(googleId.trim()) + "}}";
+        HttpResponse<String> response = request("/auth/v1/signup", "POST", body);
+        ensureSuccess(response);
+        return new UserAccount(email.trim().toLowerCase(), name.trim(), googleId.trim(), new byte[0], new byte[0]);
     }
 
     public UserAccount login(String email, String password) {
-        UserAccount account = accounts.get(normalize(email));
-        if (account == null || !MessageDigest.isEqual(account.getPasswordHash(), hash(password.toCharArray(), account.getPasswordSalt()))) throw new IllegalArgumentException("Invalid email or password.");
-        return account;
+        HttpResponse<String> response = request("/auth/v1/token?grant_type=password", "POST", "{\"email\":" + json(email.trim().toLowerCase()) + ",\"password\":" + json(password) + "}");
+        ensureSuccess(response);
+        String returnedEmail = value(response.body(), "email");
+        return new UserAccount(returnedEmail.isBlank() ? email.trim().toLowerCase() : returnedEmail, "", "", new byte[0], new byte[0]);
     }
 
-    public void resetPassword(String email, String newPassword, String confirmation) {
-        UserAccount existing = accounts.get(normalize(email));
-        if (existing == null) throw new IllegalArgumentException("No account was found for that email.");
-        if (newPassword.length() < 8) throw new IllegalArgumentException("Password must be at least 8 characters.");
-        if (!newPassword.equals(confirmation)) throw new IllegalArgumentException("Passwords do not match.");
-        byte[] salt = new byte[16]; random().nextBytes(salt);
-        accounts.put(existing.getEmail(), new UserAccount(existing.getEmail(), existing.getName(), existing.getGoogleId(), salt, hash(newPassword.toCharArray(), salt))); save();
+    public void sendResetEmail(String email) {
+        if (!email.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) throw new IllegalArgumentException("Enter a valid email address.");
+        HttpResponse<String> response = request("/auth/v1/recover", "POST", "{\"email\":" + json(email.trim().toLowerCase()) + "}");
+        ensureSuccess(response);
     }
 
-    private byte[] hash(char[] password, byte[] salt) {
-        try { return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(new PBEKeySpec(password, salt, ITERATIONS, KEY_LENGTH)).getEncoded(); }
-        catch (NoSuchAlgorithmException | InvalidKeySpecException exception) { throw new IllegalStateException("Password security is unavailable.", exception); }
+    private void validatePassword(String password, String confirmation) {
+        if (password.length() < 8) throw new IllegalArgumentException("Password must be at least 8 characters.");
+        if (!password.equals(confirmation)) throw new IllegalArgumentException("Passwords do not match.");
     }
-    private String normalize(String email) { return email == null ? "" : email.trim().toLowerCase(); }
-    private SecureRandom random() { if (random == null) random = new SecureRandom(); return random; }
 
-    private void load() {
-        File file = new File(DATABASE_FILE); if (!file.exists()) return;
-        try (ObjectInputStream input = new ObjectInputStream(new FileInputStream(file))) { accounts.putAll(((AuthDatabase) input.readObject()).accounts); }
-        catch (IOException | ClassNotFoundException exception) { throw new IllegalStateException("Could not open the user database.", exception); }
+    private HttpResponse<String> request(String path, String method, String body) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(projectUrl + path)).header("apikey", publishableKey).header("Content-Type", "application/json").method(method, HttpRequest.BodyPublishers.ofString(body)).build();
+            return client.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (IOException exception) { throw new IllegalStateException("Could not connect to Supabase. Check your internet connection.", exception); }
+        catch (InterruptedException exception) { Thread.currentThread().interrupt(); throw new IllegalStateException("Supabase request was interrupted.", exception); }
     }
-    private void save() {
-        try (ObjectOutputStream output = new ObjectOutputStream(new FileOutputStream(DATABASE_FILE))) { output.writeObject(this); }
-        catch (IOException exception) { throw new IllegalStateException("Could not save the user database.", exception); }
+
+    private void ensureSuccess(HttpResponse<String> response) {
+        if (response.statusCode() < 200 || response.statusCode() >= 300) throw new IllegalArgumentException(value(response.body(), "msg", "message", "error_description", "error"));
     }
+
+    private String value(String body, String... keys) {
+        for (String key : keys) {
+            String marker = "\"" + key + "\":"; int start = body.indexOf(marker); if (start < 0) continue;
+            start += marker.length(); while (start < body.length() && Character.isWhitespace(body.charAt(start))) start++;
+            if (start < body.length() && body.charAt(start) == '"') { int end = body.indexOf('"', start + 1); if (end > start) return body.substring(start + 1, end); }
+        }
+        return "Supabase request failed.";
+    }
+
+    private String json(String text) { return "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""; }
 }

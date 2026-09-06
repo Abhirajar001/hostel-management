@@ -30,10 +30,10 @@ public class LoginWindow extends JFrame {
     }
 
     private void showReset() {
-        resizeAuthWindow(400, 460);
-        JPanel panel = form("Reset your password", "Enter your registered email and choose a new password."); JTextField email = new JTextField(); JPasswordField password = new JPasswordField(); JPasswordField confirmation = new JPasswordField(); JButton reset = primary("Reset password"); JButton back = new JButton("Back to sign in");
-        panel.add(field("Email address", email)); panel.add(passwordField("New password", password)); panel.add(passwordField("Confirm new password", confirmation)); panel.add(reset); panel.add(back);
-        reset.addActionListener(event -> run(() -> { database.resetPassword(email.getText(), new String(password.getPassword()), new String(confirmation.getPassword())); JOptionPane.showMessageDialog(this, "Password reset successfully."); showLogin(); })); back.addActionListener(event -> showLogin()); setContentPane(panel); revalidate(); repaint();
+        resizeAuthWindow(400, 330);
+        JPanel panel = form("Reset your password", "We will email you a secure password reset link."); JTextField email = new JTextField(); JButton reset = primary("Send reset email"); JButton back = new JButton("Back to sign in");
+        panel.add(field("Email address", email)); panel.add(reset); panel.add(back);
+        reset.addActionListener(event -> run(() -> { database.sendResetEmail(email.getText()); JOptionPane.showMessageDialog(this, "Check your email for the password reset link."); showLogin(); })); back.addActionListener(event -> showLogin()); setContentPane(panel); revalidate(); repaint();
     }
 
     private JPanel form(String title, String subtitle) { JPanel panel = new JPanel(); panel.setBorder(BorderFactory.createEmptyBorder(22, 30, 20, 30)); panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS)); panel.setBackground(new Color(247, 249, 247)); JLabel heading = new JLabel("<html><div style='font-size:22px; font-weight:700; color:#1e2a34'>" + title + "</div><div style='font-size:12px; color:#63727b'>" + subtitle + "</div></html>"); heading.setAlignmentX(Component.LEFT_ALIGNMENT); panel.add(heading); panel.add(Box.createVerticalStrut(14)); return panel; }
