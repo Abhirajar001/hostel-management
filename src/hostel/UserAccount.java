@@ -1,6 +1,7 @@
 package hostel;
 
 import java.io.Serializable;
+import java.util.Arrays;
 
 public class UserAccount implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -14,13 +15,13 @@ public class UserAccount implements Serializable {
         this.email = email;
         this.name = name;
         this.googleId = googleId;
-        this.passwordSalt = passwordSalt;
-        this.passwordHash = passwordHash;
+        this.passwordSalt = Arrays.copyOf(passwordSalt, passwordSalt.length);
+        this.passwordHash = Arrays.copyOf(passwordHash, passwordHash.length);
     }
 
     public String getEmail() { return email; }
     public String getName() { return name; }
     public String getGoogleId() { return googleId; }
-    public byte[] getPasswordSalt() { return passwordSalt; }
-    public byte[] getPasswordHash() { return passwordHash; }
+    public byte[] getPasswordSalt() { return Arrays.copyOf(passwordSalt, passwordSalt.length); }
+    public byte[] getPasswordHash() { return Arrays.copyOf(passwordHash, passwordHash.length); }
 }
